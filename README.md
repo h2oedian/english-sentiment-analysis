@@ -3,8 +3,8 @@
 An end-to-end, reproducible Persian sentiment-analysis project that compares classical
 machine-learning baselines with transformer models using macro F1, precision, and recall.
 
-> Status: Phase 1 — classical baselines are implemented. Transformer training, API, and demo
-> are planned next.
+> Status: Phase 2 — licensed dataset preparation and classical baselines are implemented.
+> Transformer training, API, and demo are planned next.
 
 ## Why this project?
 
@@ -21,10 +21,32 @@ data splitting, evaluation, and experiment reproducibility as first-class concer
 - Macro/weighted F1, precision, recall, classification reports, and confusion matrices
 - Saved model artifact and machine-readable experiment summary
 - Unit tests for critical normalization behavior
+- Reproducible ParsiNLU download with review-level aggregation and official splits
 
 ## Dataset format
 
-Put a UTF-8 CSV file at `data/raw/reviews.csv` with these columns:
+The default dataset is [Persian Twitter Sentiment](https://huggingface.co/datasets/moali-mkh-2000/PersianTwitterDataset-SentimentAnalysis),
+licensed under the Open Database License (ODbL). Download and prepare it with:
+
+```powershell
+persian-sentiment prepare-data
+```
+
+The source emotion labels are transparently mapped as `Happy → positive`, `Sad/Angry → negative`,
+and `Neutral → neutral`; the ambiguous `Intense Emotions` class is excluded. A deterministic,
+stratified 70/15/15 train/validation/test split is generated with random seed 42.
+
+[ParsiNLU Sentiment](https://huggingface.co/datasets/persiannlp/parsinlu_sentiment) is also
+supported as an optional source under CC BY-NC-SA 4.0:
+
+```powershell
+persian-sentiment prepare-data --source parsinlu
+```
+
+ParsiNLU aspect labels are collapsed into unambiguous review-level labels, but its neutral class
+is very small; it is provided for research and robustness checks rather than the primary benchmark.
+
+You can alternatively provide a UTF-8 CSV file at `data/raw/reviews.csv` with these columns:
 
 ```csv
 text,label
@@ -48,9 +70,23 @@ pytest
 
 Outputs are written to `artifacts/` and `reports/`.
 
+## Baseline results
+
+Results on the held-out Persian Twitter test split (441 examples):
+
+| Model | Macro Precision | Macro Recall | Macro F1 | Weighted F1 |
+|---|---:|---:|---:|---:|
+| Logistic Regression | 0.538 | 0.533 | **0.535** | **0.614** |
+| Linear SVM | 0.528 | 0.519 | 0.522 | 0.600 |
+| Multinomial Naive Bayes | 0.413 | 0.437 | 0.403 | 0.539 |
+
+Macro F1 is the primary metric because the neutral class is smaller. The gap between macro and
+weighted F1 highlights class imbalance and motivates the transformer and error-analysis phases.
+Machine-readable reports and confusion matrices are available in `reports/`.
+
 ## Roadmap
 
-- [x] Reproducible classical ML baselines
+- [x] Licensed dataset pipeline and reproducible classical ML baselines
 - [ ] ParsBERT/XLM-R transformer fine-tuning
 - [ ] Unified experiment comparison table and error analysis
 - [ ] FastAPI inference service and Docker image
@@ -70,4 +106,12 @@ reports/                 metrics and plots
 ## License
 
 MIT (code only). Dataset and pretrained model licenses must be reviewed separately.
+Dataset files are not redistributed by this repository. Persian Twitter data remains licensed
+under [ODbL](https://opendatacommons.org/licenses/odbl/1-0/), while optional ParsiNLU data remains
+under [CC BY-NC-SA 4.0](https://creativecommons.org/licenses/by-nc-sa/4.0/).
 
+## Citation
+
+For the default dataset, cite Elahimanesh, Mohammadkhani, and Kasaei, *Emotion Alignment:
+Discovering the Gap Between Social Media and Real-World Sentiments in Persian Tweets and Images*
+(2025), arXiv:2504.10662. For optional ParsiNLU, cite Khashabi et al. (2020), arXiv:2012.06154.

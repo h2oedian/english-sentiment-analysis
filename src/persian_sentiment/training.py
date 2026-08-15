@@ -47,7 +47,9 @@ def load_dataset(path: Path) -> pd.DataFrame:
     required = {"text", "label"}
     if not required.issubset(frame.columns):
         raise ValueError(f"Dataset must contain columns: {sorted(required)}")
-    frame = frame[["text", "label"]].dropna().drop_duplicates().copy()
+    optional = [column for column in ("split", "source_id") if column in frame.columns]
+    frame = frame[["text", "label", *optional]].dropna(subset=["text", "label"]).copy()
+    frame = frame.drop_duplicates(subset=["text", "label"])
     frame["label"] = frame["label"].astype(str).str.lower().str.strip()
     unknown = sorted(set(frame["label"]) - set(LABELS))
     if unknown:
@@ -66,13 +68,21 @@ def train_classical_models(
     random_state: int = 42,
 ) -> dict[str, dict[str, float]]:
     frame = load_dataset(data_path)
-    x_train, x_test, y_train, y_test = train_test_split(
-        frame["text"],
-        frame["label"],
-        test_size=test_size,
-        random_state=random_state,
-        stratify=frame["label"],
-    )
+    if "split" in frame.columns and set(frame["split"]) >= {"train", "test"}:
+        train_frame = frame[frame["split"].isin(["train", "validation"])]
+        test_frame = frame[frame["split"] == "test"]
+        x_train, y_train = train_frame["text"], train_frame["label"]
+        x_test, y_test = test_frame["text"], test_frame["label"]
+        split_strategy = "official_train_validation_vs_test"
+    else:
+        x_train, x_test, y_train, y_test = train_test_split(
+            frame["text"],
+            frame["label"],
+            test_size=test_size,
+            random_state=random_state,
+            stratify=frame["label"],
+        )
+        split_strategy = "stratified_random"
     output_dir.mkdir(parents=True, exist_ok=True)
     report_dir.mkdir(parents=True, exist_ok=True)
     results: dict[str, dict[str, float]] = {}
@@ -108,7 +118,12 @@ def train_classical_models(
 
     summary = {
         "dataset_rows": len(frame),
-        "test_size": test_size,
+        "train_rows": len(x_train),
+        "test_rows": len(x_test),
+        "class_distribution": frame["label"].value_counts().to_dict(),
+        "split_strategy": split_strategy,
+        "test_fraction": len(x_test) / len(frame),
+        "requested_test_size": test_size if split_strategy == "stratified_random" else None,
         "random_state": random_state,
         "best_model": best_name,
         "models": results,
@@ -117,4 +132,3 @@ def train_classical_models(
         json.dump(summary, f, ensure_ascii=False, indent=2)
     joblib.dump(best_pipeline, output_dir / "best_classical_model.joblib")
     return results
-
