@@ -1,2 +1,0 @@
-[console_scripts]
-persian-sentiment = persian_sentiment.cli:main
