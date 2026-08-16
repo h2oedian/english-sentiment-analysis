@@ -1,62 +1,33 @@
-# Persian NLP & Sentiment Analysis System
+# English NLP & Sentiment Analysis System
 
-An end-to-end, reproducible Persian sentiment-analysis project that compares classical
-machine-learning baselines with transformer models using macro F1, precision, and recall.
+[![CI](https://github.com/h2oedian/english-sentiment-analysis/actions/workflows/ci.yml/badge.svg)](https://github.com/h2oedian/english-sentiment-analysis/actions/workflows/ci.yml)
+[![Python 3.10+](https://img.shields.io/badge/python-3.10%2B-3776AB.svg)](https://www.python.org/)
+[![License: MIT](https://img.shields.io/badge/license-MIT-green.svg)](LICENSE)
 
-> Status: Phase 4 — data preparation, classical/transformer experiments, FastAPI, browser demo,
-> Docker, and continuous integration are implemented.
+An end-to-end, reproducible English sentiment-analysis portfolio project. It classifies text as
+**negative**, **neutral**, or **positive**, compares classical machine learning with a RoBERTa
+transformer, and exposes the selected model through a tested API and browser interface.
 
-## Why this project?
+## Highlights
 
-Persian text contains practical normalization challenges such as Arabic/Persian character
-variants, zero-width non-joiners, URLs, and informal writing. This project treats preprocessing,
-data splitting, evaluation, and experiment reproducibility as first-class concerns.
+- Official TweetEval train/validation/test splits with leakage checks
+- Negation-aware English normalization (`don't` → `do not`)
+- Word and character TF-IDF features
+- Logistic Regression, calibrated Linear SVM, and Multinomial Naive Bayes
+- Twitter-RoBERTa transformer benchmark
+- Macro precision, recall, F1, weighted F1, per-class reports, and confusion matrices
+- FastAPI endpoints, responsive English UI, Docker image, and GitHub Actions CI
+- Saved, probability-calibrated deployment model
 
-## Current features
+## Architecture
 
-- Persian-aware text normalization without data leakage
-- Stratified train/test split with a fixed random seed
-- TF-IDF word and character features
-- Logistic Regression, Linear SVM, and Multinomial Naive Bayes baselines
-- Macro/weighted F1, precision, recall, classification reports, and confusion matrices
-- Saved model artifact and machine-readable experiment summary
-- Unit tests for critical normalization behavior
-- Reproducible ParsiNLU download with review-level aggregation and official splits
-
-## Dataset format
-
-The default dataset is [Persian Twitter Sentiment](https://huggingface.co/datasets/moali-mkh-2000/PersianTwitterDataset-SentimentAnalysis),
-licensed under the Open Database License (ODbL). Download and prepare it with:
-
-```powershell
-persian-sentiment prepare-data
+```text
+TweetEval → validation/normalization → TF-IDF baselines ─┐
+                                                        ├→ metrics + comparison report
+TweetEval test → Twitter-RoBERTa evaluation ─────────────┘
+                                                        ↓
+                                      saved model → FastAPI → English web UI
 ```
-
-The source emotion labels are transparently mapped as `Happy → positive`, `Sad/Angry → negative`,
-and `Neutral → neutral`; the ambiguous `Intense Emotions` class is excluded. A deterministic,
-stratified 70/15/15 train/validation/test split is generated with random seed 42.
-
-[ParsiNLU Sentiment](https://huggingface.co/datasets/persiannlp/parsinlu_sentiment) is also
-supported as an optional source under CC BY-NC-SA 4.0:
-
-```powershell
-persian-sentiment prepare-data --source parsinlu
-```
-
-ParsiNLU aspect labels are collapsed into unambiguous review-level labels, but its neutral class
-is very small; it is provided for research and robustness checks rather than the primary benchmark.
-
-You can alternatively provide a UTF-8 CSV file at `data/raw/reviews.csv` with these columns:
-
-```csv
-text,label
-این محصول واقعاً عالی بود,positive
-اصلاً راضی نبودم,negative
-معمولی بود,neutral
-```
-
-Labels must be `positive`, `negative`, or `neutral`. Do not commit a dataset unless its license
-allows redistribution; document its source and license in your final project.
 
 ## Quick start
 
@@ -64,106 +35,122 @@ allows redistribution; document its source and license in your final project.
 python -m venv .venv
 .venv\Scripts\Activate.ps1
 python -m pip install -e ".[dev]"
-persian-sentiment train --data data/raw/reviews.csv
+english-sentiment prepare-data
+english-sentiment train
 pytest
+uvicorn english_sentiment.api:app --reload
 ```
 
-Outputs are written to `artifacts/` and `reports/`.
+Open `http://127.0.0.1:8000` for the demo or `http://127.0.0.1:8000/docs` for OpenAPI docs.
 
-Use `.[experiment]` for classical experiment dependencies, `.[transformer]` for fine-tuning,
-and `.[api]` for the minimal inference service.
+## Dataset
 
-## Baseline results
+The default benchmark is the sentiment subset of
+[TweetEval](https://github.com/cardiffnlp/tweeteval), containing English tweets with three labels.
+The project downloads the original files at runtime and does not redistribute the dataset.
+Official splits are retained; classical models combine train and validation for final fitting and
+are evaluated once on the test split.
 
-Results on the held-out Persian Twitter test split (441 examples):
+The generated CSV schema is:
 
-| Model | Macro Precision | Macro Recall | Macro F1 | Weighted F1 |
-|---|---:|---:|---:|---:|
-| Persian DistilBERT (2 epochs) | **0.614** | **0.618** | **0.615** | **0.660** |
-| Logistic Regression | 0.538 | 0.533 | 0.535 | 0.614 |
-| Linear SVM | 0.528 | 0.519 | 0.522 | 0.600 |
-| Multinomial Naive Bayes | 0.413 | 0.437 | 0.403 | 0.539 |
+```csv
+text,label,source_id,split
+I love this!,positive,0a1b2c3d4e5f6789,train
+```
 
-Macro F1 is the primary metric because the neutral class is smaller. Persian DistilBERT improves
-macro F1 by 8.0 percentage points over the strongest classical baseline. The gap between macro and
-weighted F1 still highlights class imbalance. Machine-readable reports, confusion matrices, and a
-combined comparison chart are available in `reports/`.
+## Experiments
 
-## Transformer training
+Run the reproducible classical comparison:
 
-The transformer experiment fine-tunes the Apache-2.0 licensed
-[`HooshvareLab/distilbert-fa-zwnj-base`](https://huggingface.co/HooshvareLab/distilbert-fa-zwnj-base).
-It uses class-weighted cross-entropy, validation-based checkpoint selection, and the same held-out
-test split as the classical baselines.
+```powershell
+python -m pip install -e ".[experiment]"
+english-sentiment prepare-data
+english-sentiment train
+```
+
+Evaluate the CC-BY-4.0 licensed
+[`cardiffnlp/twitter-roberta-base-sentiment-latest`](https://huggingface.co/cardiffnlp/twitter-roberta-base-sentiment-latest)
+on the same held-out test data:
 
 ```powershell
 python -m pip install -e ".[transformer]"
-persian-sentiment train-transformer --data data/raw/reviews.csv
+english-sentiment evaluate-transformer
 ```
 
-The default settings use two epochs, batch size 8, and maximum sequence length 128. Training runs
-on CPU when CUDA is unavailable. Model checkpoints stay under the ignored `artifacts/` directory;
-only compact evaluation reports are versioned. Interrupted or extended runs automatically resume
-from the most recent checkpoint in the output directory.
+Generated files include JSON classification reports, confusion matrices, a CSV comparison table,
+a comparison chart, and the selected classical model. Macro F1 is the primary metric because it
+gives equal importance to all three classes despite class imbalance.
 
-## API and interactive demo
+### Reproduced results
 
-Install and start the lightweight production API:
+Results below were generated on all 12,284 examples in the official TweetEval test split:
+
+| Model | Macro Precision | Macro Recall | Macro F1 | Weighted F1 |
+|---|---:|---:|---:|---:|
+| Twitter-RoBERTa | **0.718** | **0.731** | **0.722** | **0.719** |
+| Logistic Regression | 0.601 | 0.619 | 0.608 | 0.611 |
+| Multinomial Naive Bayes | 0.610 | 0.591 | 0.591 | 0.602 |
+| Calibrated Linear SVM | 0.611 | 0.586 | 0.581 | 0.595 |
+
+Twitter-RoBERTa improves macro F1 by 11.3 percentage points over the strongest classical baseline.
+Exact machine-readable values are committed under `reports/`.
+
+## API
 
 ```powershell
 python -m pip install -e ".[api]"
-uvicorn persian_sentiment.api:app --reload
+uvicorn english_sentiment.api:app --reload
 ```
 
-Open `http://127.0.0.1:8000` for the Persian browser demo or `/docs` for interactive OpenAPI
-documentation. The API provides `POST /predict`, `POST /predict/batch`, and `GET /health`.
+Endpoints:
 
-The committed 1.6 MB Logistic Regression model is the deployment default. To serve your locally
-fine-tuned transformer instead:
+- `GET /health` — service and backend status
+- `POST /predict` — one text (maximum 1,000 characters)
+- `POST /predict/batch` — up to 100 texts
+- `GET /docs` — interactive API documentation
+
+Example request:
+
+```powershell
+Invoke-RestMethod http://127.0.0.1:8000/predict -Method Post `
+  -ContentType application/json -Body '{"text":"I do not like this product."}'
+```
+
+The compact classical model is the default. To serve a downloaded transformer artifact:
 
 ```powershell
 $env:SENTIMENT_BACKEND = "transformer"
 $env:SENTIMENT_MODEL_PATH = "artifacts/transformer_model"
-uvicorn persian_sentiment.api:app
+uvicorn english_sentiment.api:app
 ```
 
-### Docker
+## Docker
 
 ```powershell
-docker build -t persian-sentiment-api .
-docker run --rm -p 8000:8000 persian-sentiment-api
+docker build -t english-sentiment-api .
+docker run --rm -p 8000:8000 english-sentiment-api
 ```
-
-## Roadmap
-
-- [x] Licensed dataset pipeline and reproducible classical ML baselines
-- [x] Persian DistilBERT transformer fine-tuning
-- [x] Unified experiment comparison table and chart
-- [ ] Qualitative error analysis
-- [x] FastAPI inference service and Docker image
-- [x] Lightweight Persian browser demo
-- [x] GitHub Actions CI
-- [ ] Model card and deployment to a public cloud service
 
 ## Repository structure
 
 ```text
-src/persian_sentiment/  reusable Python package
-tests/                  unit tests
-data/raw/               local datasets (ignored by Git)
-artifacts/               trained models (ignored by Git)
-reports/                 metrics and plots
+src/english_sentiment/  reusable package, API, and web UI
+tests/                  unit and integration tests
+data/raw/               downloaded data (Git-ignored)
+models/                 compact deployment model
+artifacts/              transformer files (Git-ignored)
+reports/                metrics, plots, and experiment summaries
 ```
 
-## License
+## Reproducibility and limitations
 
-MIT (code only). Dataset and pretrained model licenses must be reviewed separately.
-Dataset files are not redistributed by this repository. Persian Twitter data remains licensed
-under [ODbL](https://opendatacommons.org/licenses/odbl/1-0/), while optional ParsiNLU data remains
-under [CC BY-NC-SA 4.0](https://creativecommons.org/licenses/by-nc-sa/4.0/).
+- Dataset splits are official and model configuration is committed.
+- Raw data and large transformer weights are intentionally excluded from Git.
+- Social-media sentiment is subjective; sarcasm, mixed opinions, and domain shifts remain hard.
+- Predictions should not be used for high-stakes or individual-level decisions.
 
-## Citation
+## License and citation
 
-For the default dataset, cite Elahimanesh, Mohammadkhani, and Kasaei, *Emotion Alignment:
-Discovering the Gap Between Social Media and Real-World Sentiments in Persian Tweets and Images*
-(2025), arXiv:2504.10662. For optional ParsiNLU, cite Khashabi et al. (2020), arXiv:2012.06154.
+Project code is MIT licensed. TweetEval and pretrained-model terms apply separately. If you use the
+benchmark, cite Barbieri et al., *TweetEval: Unified Benchmark and Comparative Evaluation for Tweet
+Classification* (Findings of EMNLP 2020). The RoBERTa model card specifies CC-BY-4.0.

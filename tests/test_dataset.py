@@ -1,27 +1,19 @@
-from persian_sentiment.dataset import TWITTER_LABEL_MAP, collapse_aspect_records
+import pytest
+
+from english_sentiment.dataset import LABEL_MAP, build_tweeteval_split
 
 
-def test_collapses_consistent_aspects_to_review_level() -> None:
-    records = [
-        {"review_id": "1", "review": "عالی بود", "label": "1"},
-        {"review_id": "1", "review": "عالی بود", "label": "2"},
-    ]
-    frame = collapse_aspect_records(records, "train")
-    record = frame.to_dict("records")[0]
-    assert record["text"] == "عالی بود"
-    assert record["label"] == "positive"
-    assert record["split"] == "train"
-    assert len(record["source_id"]) == 16
+def test_builds_official_split() -> None:
+    frame = build_tweeteval_split(["bad", "fine", "great"], ["0", "1", "2"], "train")
+    assert frame["label"].tolist() == ["negative", "neutral", "positive"]
+    assert set(frame["split"]) == {"train"}
+    assert all(frame["source_id"].str.len() == 16)
 
 
-def test_drops_conflicting_and_non_sentiment_reviews() -> None:
-    records = [
-        {"review_id": "1", "review": "ترکیبی", "label": "1"},
-        {"review_id": "1", "review": "ترکیبی", "label": "-1"},
-        {"review_id": "2", "review": "بدون احساس", "label": "-3"},
-    ]
-    assert collapse_aspect_records(records, "test").empty
+def test_rejects_mismatched_parallel_files() -> None:
+    with pytest.raises(ValueError, match="Mismatched"):
+        build_tweeteval_split(["one"], ["0", "1"], "test")
 
 
-def test_twitter_emotion_to_sentiment_mapping() -> None:
-    assert TWITTER_LABEL_MAP == {0: "positive", 1: "negative", 2: "negative", 3: "neutral"}
+def test_tweeteval_label_contract() -> None:
+    assert LABEL_MAP == {0: "negative", 1: "neutral", 2: "positive"}

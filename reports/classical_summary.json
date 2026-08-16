@@ -1,35 +1,35 @@
 {
-  "dataset_rows": 2939,
-  "train_rows": 2498,
-  "test_rows": 441,
+  "dataset": "TweetEval sentiment",
+  "dataset_rows": 59871,
+  "train_rows": 47587,
+  "test_rows": 12284,
   "class_distribution": {
-    "negative": 1484,
-    "positive": 1049,
-    "neutral": 406
+    "neutral": 27460,
+    "positive": 21035,
+    "negative": 11376
   },
-  "split_strategy": "official_train_validation_vs_test",
-  "test_fraction": 0.1500510377679483,
-  "requested_test_size": null,
+  "split_strategy": "official_train_plus_validation_vs_test",
   "random_state": 42,
+  "primary_metric": "f1_macro",
   "best_model": "logistic_regression",
   "models": {
     "logistic_regression": {
-      "precision_macro": 0.5377970036974508,
-      "recall_macro": 0.533129244470083,
-      "f1_macro": 0.534912175771678,
-      "f1_weighted": 0.613704998624559
+      "precision_macro": 0.6009230169079073,
+      "recall_macro": 0.6192239516138515,
+      "f1_macro": 0.6083600951278543,
+      "f1_weighted": 0.6112089634282406
     },
     "linear_svm": {
-      "precision_macro": 0.5275904317547591,
-      "recall_macro": 0.5185438206540239,
-      "f1_macro": 0.5217372175289455,
-      "f1_weighted": 0.5997753130628989
+      "precision_macro": 0.6105517360079841,
+      "recall_macro": 0.5863422689534257,
+      "f1_macro": 0.5811750001985645,
+      "f1_weighted": 0.5947160946844559
     },
     "multinomial_nb": {
-      "precision_macro": 0.41306890414441905,
-      "recall_macro": 0.43743394933021057,
-      "f1_macro": 0.40315969893434683,
-      "f1_weighted": 0.5391416272895625
+      "precision_macro": 0.6103534302311416,
+      "recall_macro": 0.5910110781141599,
+      "f1_macro": 0.5906084474105393,
+      "f1_weighted": 0.602056273743873
     }
   }
 }
