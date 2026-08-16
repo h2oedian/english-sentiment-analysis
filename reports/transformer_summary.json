@@ -1,0 +1,16 @@
+{
+  "model": "HooshvareLab/distilbert-fa-zwnj-base",
+  "epochs": 2.0,
+  "batch_size": 8,
+  "max_length": 128,
+  "device": "cpu",
+  "train_rows": 2057,
+  "validation_rows": 441,
+  "test_rows": 441,
+  "metrics": {
+    "precision_macro": 0.6136353062236893,
+    "recall_macro": 0.6177341922046983,
+    "f1_macro": 0.615113392741267,
+    "f1_weighted": 0.6599503559111517
+  }
+}

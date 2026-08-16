@@ -23,6 +23,14 @@ def main() -> None:
     train.add_argument("--artifacts", type=Path, default=Path("artifacts"))
     train.add_argument("--reports", type=Path, default=Path("reports"))
     train.add_argument("--test-size", type=float, default=0.2)
+    transformer = subparsers.add_parser("train-transformer", help="Fine-tune Persian DistilBERT")
+    transformer.add_argument("--data", type=Path, required=True)
+    transformer.add_argument("--artifacts", type=Path, default=Path("artifacts"))
+    transformer.add_argument("--reports", type=Path, default=Path("reports"))
+    transformer.add_argument("--model", default="HooshvareLab/distilbert-fa-zwnj-base")
+    transformer.add_argument("--epochs", type=float, default=2.0)
+    transformer.add_argument("--batch-size", type=int, default=8)
+    transformer.add_argument("--max-length", type=int, default=128)
     args = parser.parse_args()
 
     if args.command == "prepare-data":
@@ -34,6 +42,20 @@ def main() -> None:
     elif args.command == "train":
         result = train_classical_models(args.data, args.artifacts, args.reports, args.test_size)
         print(json.dumps(result, indent=2))
+    elif args.command == "train-transformer":
+        from .transformer_training import train_transformer
+
+        result = train_transformer(
+            args.data,
+            args.artifacts,
+            args.reports,
+            args.model,
+            args.epochs,
+            args.batch_size,
+            args.max_length,
+        )
+        print(json.dumps(result, indent=2))
+
 
 
 if __name__ == "__main__":

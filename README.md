@@ -3,8 +3,8 @@
 An end-to-end, reproducible Persian sentiment-analysis project that compares classical
 machine-learning baselines with transformer models using macro F1, precision, and recall.
 
-> Status: Phase 2 — licensed dataset preparation and classical baselines are implemented.
-> Transformer training, API, and demo are planned next.
+> Status: Phase 3 — licensed data preparation, classical baselines, and Persian DistilBERT
+> comparison are implemented. API and interactive demo are planned next.
 
 ## Why this project?
 
@@ -76,19 +76,39 @@ Results on the held-out Persian Twitter test split (441 examples):
 
 | Model | Macro Precision | Macro Recall | Macro F1 | Weighted F1 |
 |---|---:|---:|---:|---:|
-| Logistic Regression | 0.538 | 0.533 | **0.535** | **0.614** |
+| Persian DistilBERT (2 epochs) | **0.614** | **0.618** | **0.615** | **0.660** |
+| Logistic Regression | 0.538 | 0.533 | 0.535 | 0.614 |
 | Linear SVM | 0.528 | 0.519 | 0.522 | 0.600 |
 | Multinomial Naive Bayes | 0.413 | 0.437 | 0.403 | 0.539 |
 
-Macro F1 is the primary metric because the neutral class is smaller. The gap between macro and
-weighted F1 highlights class imbalance and motivates the transformer and error-analysis phases.
-Machine-readable reports and confusion matrices are available in `reports/`.
+Macro F1 is the primary metric because the neutral class is smaller. Persian DistilBERT improves
+macro F1 by 8.0 percentage points over the strongest classical baseline. The gap between macro and
+weighted F1 still highlights class imbalance. Machine-readable reports, confusion matrices, and a
+combined comparison chart are available in `reports/`.
+
+## Transformer training
+
+The transformer experiment fine-tunes the Apache-2.0 licensed
+[`HooshvareLab/distilbert-fa-zwnj-base`](https://huggingface.co/HooshvareLab/distilbert-fa-zwnj-base).
+It uses class-weighted cross-entropy, validation-based checkpoint selection, and the same held-out
+test split as the classical baselines.
+
+```powershell
+python -m pip install -e ".[transformer]"
+persian-sentiment train-transformer --data data/raw/reviews.csv
+```
+
+The default settings use two epochs, batch size 8, and maximum sequence length 128. Training runs
+on CPU when CUDA is unavailable. Model checkpoints stay under the ignored `artifacts/` directory;
+only compact evaluation reports are versioned. Interrupted or extended runs automatically resume
+from the most recent checkpoint in the output directory.
 
 ## Roadmap
 
 - [x] Licensed dataset pipeline and reproducible classical ML baselines
-- [ ] ParsBERT/XLM-R transformer fine-tuning
-- [ ] Unified experiment comparison table and error analysis
+- [x] Persian DistilBERT transformer fine-tuning
+- [x] Unified experiment comparison table and chart
+- [ ] Qualitative error analysis
 - [ ] FastAPI inference service and Docker image
 - [ ] Streamlit or Gradio demo
 - [ ] GitHub Actions CI and polished model card
