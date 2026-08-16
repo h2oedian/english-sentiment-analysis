@@ -17,9 +17,8 @@ from sklearn.naive_bayes import MultinomialNB
 from sklearn.pipeline import FeatureUnion, Pipeline
 from sklearn.svm import LinearSVC
 
+from .constants import LABELS
 from .preprocessing import normalize_persian_text
-
-LABELS = ["negative", "neutral", "positive"]
 
 
 def _features() -> FeatureUnion:

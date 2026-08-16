@@ -9,7 +9,8 @@ import numpy as np
 import pandas as pd
 from sklearn.metrics import classification_report, precision_recall_fscore_support
 
-from .training import LABELS, load_dataset
+from .constants import LABELS
+from .training import load_dataset
 
 DEFAULT_MODEL = "HooshvareLab/distilbert-fa-zwnj-base"
 LABEL_TO_ID = {label: index for index, label in enumerate(LABELS)}

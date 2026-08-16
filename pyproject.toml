@@ -9,28 +9,46 @@ description = "Reproducible comparison of classical ML and transformer models fo
 readme = "README.md"
 requires-python = ">=3.10"
 dependencies = [
-  "pandas>=2.0,<3.0",
   "scikit-learn>=1.3,<2.0",
   "joblib>=1.3,<2.0",
-  "matplotlib>=3.8,<4.0",
-  "seaborn>=0.13,<1.0",
 ]
 
 [project.optional-dependencies]
-dev = ["pytest>=8.0,<9.0", "ruff>=0.6,<1.0"]
+experiment = [
+  "pandas>=2.0,<3.0",
+  "matplotlib>=3.8,<4.0",
+  "seaborn>=0.13,<1.0",
+]
+dev = [
+  "pytest>=8.0,<9.0",
+  "ruff>=0.6,<1.0",
+  "pandas>=2.0,<3.0",
+  "matplotlib>=3.8,<4.0",
+  "seaborn>=0.13,<1.0",
+]
 transformer = [
   "datasets>=2.20,<4.0",
   "transformers>=4.44,<5.0",
   "torch>=2.2,<3.0",
   "accelerate>=0.33,<2.0",
+  "pandas>=2.0,<3.0",
+  "matplotlib>=3.8,<4.0",
+  "seaborn>=0.13,<1.0",
 ]
-api = ["fastapi>=0.112,<1.0", "uvicorn[standard]>=0.30,<1.0"]
+api = [
+  "fastapi>=0.112,<1.0",
+  "uvicorn[standard]>=0.30,<1.0",
+  "httpx>=0.27,<1.0",
+]
 
 [project.scripts]
 persian-sentiment = "persian_sentiment.cli:main"
 
 [tool.setuptools.packages.find]
 where = ["src"]
+
+[tool.setuptools.package-data]
+persian_sentiment = ["static/*.html"]
 
 [tool.pytest.ini_options]
 pythonpath = ["src"]
@@ -39,4 +57,3 @@ testpaths = ["tests"]
 [tool.ruff]
 line-length = 100
 target-version = "py310"
-

@@ -3,8 +3,8 @@
 An end-to-end, reproducible Persian sentiment-analysis project that compares classical
 machine-learning baselines with transformer models using macro F1, precision, and recall.
 
-> Status: Phase 3 — licensed data preparation, classical baselines, and Persian DistilBERT
-> comparison are implemented. API and interactive demo are planned next.
+> Status: Phase 4 — data preparation, classical/transformer experiments, FastAPI, browser demo,
+> Docker, and continuous integration are implemented.
 
 ## Why this project?
 
@@ -70,6 +70,9 @@ pytest
 
 Outputs are written to `artifacts/` and `reports/`.
 
+Use `.[experiment]` for classical experiment dependencies, `.[transformer]` for fine-tuning,
+and `.[api]` for the minimal inference service.
+
 ## Baseline results
 
 Results on the held-out Persian Twitter test split (441 examples):
@@ -103,15 +106,44 @@ on CPU when CUDA is unavailable. Model checkpoints stay under the ignored `artif
 only compact evaluation reports are versioned. Interrupted or extended runs automatically resume
 from the most recent checkpoint in the output directory.
 
+## API and interactive demo
+
+Install and start the lightweight production API:
+
+```powershell
+python -m pip install -e ".[api]"
+uvicorn persian_sentiment.api:app --reload
+```
+
+Open `http://127.0.0.1:8000` for the Persian browser demo or `/docs` for interactive OpenAPI
+documentation. The API provides `POST /predict`, `POST /predict/batch`, and `GET /health`.
+
+The committed 1.6 MB Logistic Regression model is the deployment default. To serve your locally
+fine-tuned transformer instead:
+
+```powershell
+$env:SENTIMENT_BACKEND = "transformer"
+$env:SENTIMENT_MODEL_PATH = "artifacts/transformer_model"
+uvicorn persian_sentiment.api:app
+```
+
+### Docker
+
+```powershell
+docker build -t persian-sentiment-api .
+docker run --rm -p 8000:8000 persian-sentiment-api
+```
+
 ## Roadmap
 
 - [x] Licensed dataset pipeline and reproducible classical ML baselines
 - [x] Persian DistilBERT transformer fine-tuning
 - [x] Unified experiment comparison table and chart
 - [ ] Qualitative error analysis
-- [ ] FastAPI inference service and Docker image
-- [ ] Streamlit or Gradio demo
-- [ ] GitHub Actions CI and polished model card
+- [x] FastAPI inference service and Docker image
+- [x] Lightweight Persian browser demo
+- [x] GitHub Actions CI
+- [ ] Model card and deployment to a public cloud service
 
 ## Repository structure
 
