@@ -1,13 +1,49 @@
+# Python bytecode and caches
 __pycache__/
 *.py[cod]
-*.egg-info/
-.venv/
-.env
+*$py.class
 .pytest_cache/
 .ruff_cache/
+.mypy_cache/
+.coverage
+htmlcov/
+
+# Virtual environments and local configuration
+.venv/
+venv/
+env/
+.env
+.env.*
+!.env.example
+
+# Packaging and build outputs
+build/
+dist/
+*.egg-info/
+
+# Editors and operating systems
+.idea/
+.vscode/
+*.code-workspace
+.DS_Store
+Thumbs.db
+desktop.ini
+
+# Logs and temporary files
+*.log
+*.tmp
+*.temp
+
+# Downloaded datasets (keep directory placeholder only)
 data/raw/*
 !data/raw/.gitkeep
+
+# Large transformer checkpoints and generated artifacts
 artifacts/*
 !artifacts/.gitkeep
+checkpoints/
+runs/
+
+# Ad-hoc generated figures; curated reports remain versioned
 reports/figures/*
 !reports/figures/.gitkeep

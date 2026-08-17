@@ -1,0 +1,70 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width,initial-scale=1">
+  <meta name="description" content="English sentiment analysis demo powered by machine learning">
+  <title>English Sentiment Studio</title>
+  <style>
+    :root { color-scheme: dark; font-family: Inter, ui-sans-serif, system-ui, sans-serif; }
+    * { box-sizing: border-box; }
+    body { margin: 0; min-height: 100vh; padding: 24px; display: grid; place-items: center;
+      background: radial-gradient(circle at 85% 10%, #243b78 0, transparent 35%),
+                  radial-gradient(circle at 10% 90%, #114b4b 0, transparent 30%), #070b16; color: #f8fafc; }
+    main { width: min(820px, 100%); padding: clamp(24px, 5vw, 48px); border: 1px solid #ffffff1f;
+      border-radius: 28px; background: #0f172acc; box-shadow: 0 30px 90px #0009; backdrop-filter: blur(18px); }
+    .eyebrow { color: #67e8f9; letter-spacing: .14em; text-transform: uppercase; font-size: 12px; font-weight: 800; }
+    h1 { margin: 10px 0; font-size: clamp(34px, 7vw, 64px); line-height: 1; letter-spacing: -.04em; }
+    .intro { color: #b9c5d6; font-size: 17px; line-height: 1.7; max-width: 650px; }
+    textarea { width: 100%; min-height: 170px; resize: vertical; padding: 20px; margin: 18px 0 12px;
+      border: 1px solid #475569; border-radius: 16px; background: #080f20; color: white; font: inherit;
+      outline: none; transition: border .2s, box-shadow .2s; }
+    textarea:focus { border-color: #22d3ee; box-shadow: 0 0 0 4px #22d3ee20; }
+    .meta { display: flex; justify-content: space-between; margin-bottom: 16px; color: #8190a5; font-size: 13px; }
+    button { width: 100%; padding: 16px; border: 0; border-radius: 14px; cursor: pointer; color: #07111f;
+      background: linear-gradient(90deg, #67e8f9, #a7f3d0); font: 800 16px inherit; }
+    button:disabled { opacity: .55; cursor: wait; }
+    #result { display: none; margin-top: 24px; padding: 24px; border: 1px solid #ffffff14;
+      border-radius: 18px; background: #080f20; }
+    .result-head { display: flex; align-items: baseline; justify-content: space-between; gap: 12px; }
+    .label { font-size: 32px; font-weight: 850; text-transform: capitalize; }
+    .score-row { display: grid; grid-template-columns: 82px 1fr 52px; align-items: center; gap: 12px; margin: 14px 0; }
+    .bar { height: 9px; overflow: hidden; border-radius: 20px; background: #26354d; }
+    .bar span { display: block; height: 100%; border-radius: inherit; background: #67e8f9; }
+    small { color: #8190a5; }
+    @media (max-width: 520px) { .score-row { grid-template-columns: 72px 1fr 46px; gap: 8px; } }
+  </style>
+</head>
+<body>
+<main>
+  <div class="eyebrow">NLP Portfolio Project</div>
+  <h1>English Sentiment Studio</h1>
+  <p class="intro">Enter an English review, tweet, or short message. The model will classify its tone as negative, neutral, or positive.</p>
+  <label for="text">Text to analyze</label>
+  <textarea id="text" maxlength="1000" placeholder="Example: I don't like this product at all."></textarea>
+  <div class="meta"><span>English text only</span><span id="count">0 / 1000</span></div>
+  <button id="submit">Analyze sentiment</button>
+  <section id="result" aria-live="polite"></section>
+</main>
+<script>
+const input = document.querySelector("#text"), button = document.querySelector("#submit");
+const result = document.querySelector("#result"), count = document.querySelector("#count");
+input.addEventListener("input", () => count.textContent = `${input.value.length} / 1000`);
+button.addEventListener("click", async () => {
+  if (!input.value.trim()) { input.focus(); return; }
+  button.disabled = true; button.textContent = "Analyzing…";
+  try {
+    const response = await fetch("/predict", {method: "POST", headers: {"Content-Type": "application/json"},
+      body: JSON.stringify({text: input.value})});
+    if (!response.ok) throw new Error("Analysis failed. Please try again.");
+    const data = await response.json();
+    const rows = Object.entries(data.probabilities).sort((a,b) => b[1]-a[1]).map(([key,value]) =>
+      `<div class="score-row"><span>${key[0].toUpperCase()+key.slice(1)}</span><div class="bar"><span style="width:${value*100}%"></span></div><strong>${(value*100).toFixed(1)}%</strong></div>`).join("");
+    result.innerHTML = `<div class="result-head"><div class="label">${data.label}</div><strong>${(data.confidence*100).toFixed(1)}% confidence</strong></div>${rows}<small>Model backend: ${data.backend}</small>`;
+    result.style.display = "block";
+  } catch (error) { result.textContent = error.message; result.style.display = "block"; }
+  finally { button.disabled = false; button.textContent = "Analyze sentiment"; }
+});
+</script>
+</body>
+</html>

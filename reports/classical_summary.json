@@ -1,0 +1,35 @@
+{
+  "dataset": "TweetEval sentiment",
+  "dataset_rows": 59871,
+  "train_rows": 47587,
+  "test_rows": 12284,
+  "class_distribution": {
+    "neutral": 27460,
+    "positive": 21035,
+    "negative": 11376
+  },
+  "split_strategy": "official_train_plus_validation_vs_test",
+  "random_state": 42,
+  "primary_metric": "f1_macro",
+  "best_model": "logistic_regression",
+  "models": {
+    "logistic_regression": {
+      "precision_macro": 0.6009230169079073,
+      "recall_macro": 0.6192239516138515,
+      "f1_macro": 0.6083600951278543,
+      "f1_weighted": 0.6112089634282406
+    },
+    "linear_svm": {
+      "precision_macro": 0.6105517360079841,
+      "recall_macro": 0.5863422689534257,
+      "f1_macro": 0.5811750001985645,
+      "f1_weighted": 0.5947160946844559
+    },
+    "multinomial_nb": {
+      "precision_macro": 0.6103534302311416,
+      "recall_macro": 0.5910110781141599,
+      "f1_macro": 0.5906084474105393,
+      "f1_weighted": 0.602056273743873
+    }
+  }
+}
