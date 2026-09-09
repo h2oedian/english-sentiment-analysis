@@ -6,13 +6,10 @@ import json
 from pathlib import Path
 
 import joblib
-import matplotlib.pyplot as plt
 import pandas as pd
-import seaborn as sns
 from sklearn.calibration import CalibratedClassifierCV
 from sklearn.feature_extraction.text import TfidfVectorizer
 from sklearn.linear_model import LogisticRegression
-from sklearn.metrics import classification_report, confusion_matrix
 from sklearn.naive_bayes import MultinomialNB
 from sklearn.pipeline import FeatureUnion, Pipeline
 from sklearn.svm import LinearSVC
@@ -33,68 +30,56 @@ def _features() -> FeatureUnion:
 def _models() -> dict[str, object]:
     return {
         "logistic_regression": LogisticRegression(max_iter=2_000, class_weight="balanced", C=3),
-        "linear_svm": CalibratedClassifierCV(LinearSVC(class_weight="balanced", C=1.5), cv=3),
+        "linear_svm": CalibratedClassifierCV(LinearSVC(class_weight="balanced", C=1.5, random_state=42), cv=3),
         "multinomial_nb": MultinomialNB(alpha=0.5),
     }
 
 
 def load_dataset(path: Path) -> pd.DataFrame:
-    frame = pd.read_csv(path)
-    if not {"text", "label"}.issubset(frame.columns):
-        raise ValueError("Dataset must contain text and label columns")
-    columns = ["text", "label", *[c for c in ("split", "source_id") if c in frame.columns]]
-    frame = frame[columns].dropna(subset=["text", "label"]).copy()
-    frame["label"] = frame["label"].astype(str).str.lower().str.strip()
-    unknown = sorted(set(frame["label"]) - set(LABELS))
-    if unknown:
-        raise ValueError(f"Unknown labels: {unknown}. Expected: {LABELS}")
-    frame["text"] = frame["text"].astype(str).map(normalize_english_text)
-    return frame[frame["text"].str.len() > 0].drop_duplicates(subset=["text", "label"])
+    frame = pd.read_csv(path, keep_default_na=False)
+    if not {"text", "label", "split"}.issubset(frame.columns):
+        raise ValueError("Dataset requires text, label, and explicit split columns")
+    if set(frame.split) != {"train", "validation", "test"}:
+        raise ValueError("Expected exactly train, validation, test splits")
+    if not set(frame.label).issubset(LABELS):
+        raise ValueError("Unknown labels")
+    frame["text"] = frame.text.map(normalize_english_text)
+    if (frame.text.str.strip().str.len() == 0).any():
+        raise ValueError("Blank text")
+    keys = frame.text.str.casefold()
+    if frame.assign(key=keys).groupby("key").split.nunique().max() > 1:
+        raise ValueError("Data leakage: normalized text occurs across splits")
+    if "source_id" in frame and frame.groupby("source_id").split.nunique().max() > 1:
+        raise ValueError("Data leakage: source_id occurs across splits")
+    for split in ("train", "validation", "test"):
+        if set(frame.loc[frame.split == split, "label"]) != set(LABELS):
+            raise ValueError(f"Missing classes in {split}")
+    return frame
 
 
 def train_classical_models(data_path: Path, output_dir: Path, report_dir: Path) -> dict:
+    from sklearn.dummy import DummyClassifier
+    from .experiment import analyze, register
+    if (report_dir / "selection.json").exists():
+        raise ValueError("Selection is frozen")
     frame = load_dataset(data_path)
-    if "split" not in frame or not {"train", "validation", "test"}.issubset(set(frame["split"])):
-        raise ValueError("Training requires explicit train, validation, and test splits")
-    train = frame[frame["split"].isin(["train", "validation"])]
-    test = frame[frame["split"] == "test"]
+    train = frame[frame.split == "train"].drop_duplicates(subset=["text", "label"])
+    validation = frame[frame.split == "validation"]
     output_dir.mkdir(parents=True, exist_ok=True)
     report_dir.mkdir(parents=True, exist_ok=True)
-    results, best = {}, ("", -1.0, None)
-    for name, estimator in _models().items():
+    results = {}
+    models = {**_models(), "majority": DummyClassifier(strategy="prior")}
+    for name, estimator in models.items():
         pipeline = Pipeline([("features", _features()), ("classifier", estimator)])
-        pipeline.fit(train["text"], train["label"])
-        predicted = pipeline.predict(test["text"])
-        report = classification_report(test["label"], predicted, labels=LABELS,
-                                       output_dict=True, zero_division=0)
-        metrics = {
-            "precision_macro": report["macro avg"]["precision"],
-            "recall_macro": report["macro avg"]["recall"],
-            "f1_macro": report["macro avg"]["f1-score"],
-            "f1_weighted": report["weighted avg"]["f1-score"],
-        }
+        pipeline.fit(train.text, train.label)
+        metrics = analyze(validation, pipeline.predict(validation.text), report_dir,
+                          f"validation_{name}")
+        artifact = output_dir / f"{name}.joblib"
+        joblib.dump(pipeline, artifact)
+        register(report_dir, name, artifact, "classical", metrics, data_path)
         results[name] = metrics
-        (report_dir / f"{name}_classification_report.json").write_text(
-            json.dumps(report, indent=2), encoding="utf-8")
-        matrix = confusion_matrix(test["label"], predicted, labels=LABELS)
-        plt.figure(figsize=(6, 5))
-        sns.heatmap(matrix, annot=True, fmt="d", cmap="Blues", xticklabels=LABELS,
-                    yticklabels=LABELS)
-        plt.title(name.replace("_", " ").title())
-        plt.xlabel("Predicted label")
-        plt.ylabel("True label")
-        plt.tight_layout()
-        plt.savefig(report_dir / f"{name}_confusion_matrix.png", dpi=180)
-        plt.close()
-        if metrics["f1_macro"] > best[1]:
-            best = (name, metrics["f1_macro"], pipeline)
-    summary = {
-        "dataset": "TweetEval sentiment",
-        "dataset_rows": len(frame), "train_rows": len(train), "test_rows": len(test),
-        "class_distribution": frame["label"].value_counts().to_dict(),
-        "split_strategy": "official_train_plus_validation_vs_test", "random_state": 42,
-        "primary_metric": "f1_macro", "best_model": best[0], "models": results,
-    }
-    (report_dir / "classical_summary.json").write_text(json.dumps(summary, indent=2), encoding="utf-8")
-    joblib.dump(best[2], output_dir / "best_classical_model.joblib")
+    best = max(sorted(results), key=lambda name: results[name]["f1_macro"])
+    summary = {"evaluation_split": "validation", "train_rows": len(train),
+               "validation_rows": len(validation), "best_model": best, "models": results}
+    (report_dir / "classical_summary.json").write_text(json.dumps(summary, indent=2))
     return summary

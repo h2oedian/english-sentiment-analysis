@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 import os
+import json
 from functools import lru_cache
 from pathlib import Path
 from typing import Protocol
@@ -65,8 +66,10 @@ class TransformerPredictor:
         except ImportError as error:
             raise RuntimeError('Install dependencies with: pip install -e ".[transformer]"') from error
         self.torch = torch
-        self.tokenizer = AutoTokenizer.from_pretrained(model_path)
-        self.model = AutoModelForSequenceClassification.from_pretrained(model_path)
+        self.tokenizer = AutoTokenizer.from_pretrained(model_path, local_files_only=True)
+        self.model = AutoModelForSequenceClassification.from_pretrained(model_path, local_files_only=True)
+        if set(self.model.config.id2label.values()) != set(LABELS):
+            raise ValueError("Transformer artifact has invalid sentiment labels")
         self.model.eval()
 
     def predict_many(self, texts: list[str]) -> list[Prediction]:
@@ -76,7 +79,7 @@ class TransformerPredictor:
             probs = self.torch.softmax(self.model(**encoded).logits, dim=-1).numpy()
         output = []
         for row in probs:
-            scores = {label: float(row[index]) for index, label in enumerate(LABELS)}
+            scores = {label: float(row[index]) for index, label in self.model.config.id2label.items()}
             label = max(scores, key=scores.get)
             output.append(Prediction(label=label, confidence=scores[label],
                                      probabilities=scores, backend=self.backend))
@@ -85,8 +88,18 @@ class TransformerPredictor:
 
 @lru_cache(maxsize=1)
 def build_predictor() -> SentimentPredictor:
+    if not os.getenv("SENTIMENT_MODEL_PATH"):
+        selection = Path(os.getenv("SENTIMENT_SELECTION_PATH", "reports/run/selection.json"))
+        metadata = json.loads(selection.read_text(encoding="utf-8"))
+        backend = metadata["backend"]
+        path = Path(metadata["artifact"])
+        if backend == "transformer":
+            return TransformerPredictor(path)
+        if backend == "classical":
+            return ClassicalPredictor(path)
+        raise ValueError("Unknown selected backend")
     backend = os.getenv("SENTIMENT_BACKEND", "classical").lower()
-    default = "artifacts/transformer_model" if backend == "transformer" else "models/best_classical_model.joblib"
+    default = "artifacts/transformer_model" if backend == "transformer" else "artifacts/run/logistic_regression.joblib"
     path = Path(os.getenv("SENTIMENT_MODEL_PATH", default))
     if backend == "transformer":
         return TransformerPredictor(path)
@@ -98,7 +111,15 @@ def build_predictor() -> SentimentPredictor:
 def create_app(predictor: SentimentPredictor | None = None) -> FastAPI:
     app = FastAPI(title="English Sentiment Analysis API",
         description="Classify English text as negative, neutral, or positive.", version="1.0.0")
-    current = lambda: predictor or build_predictor()
+    def current():
+        try:
+            return predictor or build_predictor()
+        except (OSError, RuntimeError, ValueError) as error:
+            raise HTTPException(status_code=503, detail="Model unavailable") from error
+
+    @app.get("/live")
+    def live():
+        return {"status": "alive"}
 
     @app.get("/", include_in_schema=False)
     def demo() -> FileResponse:

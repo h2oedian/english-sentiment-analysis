@@ -1,8 +1,10 @@
 .git
 .venv
-artifacts
-data/raw
-reports
 __pycache__
-*.pyc
-
+.pytest_cache
+work
+data
+models
+artifacts
+reports
+tests

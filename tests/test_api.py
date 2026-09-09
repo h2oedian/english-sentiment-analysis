@@ -1,8 +1,6 @@
-from pathlib import Path
-
 from fastapi.testclient import TestClient
 
-from english_sentiment.api import ClassicalPredictor, Prediction, create_app
+from english_sentiment.api import Prediction, create_app
 
 
 class FakePredictor:
@@ -41,9 +39,12 @@ def test_request_length_is_validated() -> None:
     assert client.post("/predict", json={"text": "x" * 1001}).status_code == 422
 
 
-def test_committed_model_handles_clear_sentiment_and_negation() -> None:
-    predictor = ClassicalPredictor(Path("models/best_classical_model.joblib"))
-    samples = ["I love this product!", "I don't like this product at all."]
-    predictions = predictor.predict_many(samples)
-    assert [item.label for item in predictions] == ["positive", "negative"]
-    assert all(abs(sum(item.probabilities.values()) - 1) < 1e-8 for item in predictions)
+def test_missing_model_returns_503(monkeypatch):
+    from english_sentiment.api import build_predictor
+    monkeypatch.setenv("SENTIMENT_MODEL_PATH", "missing.joblib")
+    build_predictor.cache_clear()
+    missing = TestClient(create_app())
+    assert missing.get("/live").status_code == 200
+    assert missing.get("/health").status_code == 503
+    assert missing.post("/predict", json={"text": "hello"}).status_code == 503
+    build_predictor.cache_clear()

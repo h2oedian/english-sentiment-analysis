@@ -1,5 +1,5 @@
 [build-system]
-requires = ["setuptools>=68", "wheel"]
+requires = ["setuptools==75.8.0", "wheel==0.45.1"]
 build-backend = "setuptools.build_meta"
 
 [project]
@@ -7,16 +7,16 @@ name = "english-sentiment-analysis"
 version = "1.0.0"
 description = "Reproducible comparison of classical ML and transformer models for English sentiment analysis"
 readme = "README.md"
-requires-python = ">=3.10"
-dependencies = ["scikit-learn>=1.3,<2.0", "joblib>=1.3,<2.0"]
+requires-python = ">=3.11,<3.13"
+dependencies = ["scikit-learn==1.6.1", "joblib==1.4.2"]
 
 [project.optional-dependencies]
-experiment = ["pandas>=2.0,<3.0", "matplotlib>=3.8,<4.0", "seaborn>=0.13,<1.0"]
-dev = ["pytest>=8.0,<9.0", "ruff>=0.6,<1.0", "pandas>=2.0,<3.0",
-       "matplotlib>=3.8,<4.0", "seaborn>=0.13,<1.0", "fastapi>=0.112,<1.0", "httpx>=0.27,<1.0"]
-transformer = ["transformers>=4.44,<5.0", "torch>=2.2,<3.0", "pandas>=2.0,<3.0",
-               "matplotlib>=3.8,<4.0", "seaborn>=0.13,<1.0"]
-api = ["fastapi>=0.112,<1.0", "uvicorn[standard]>=0.30,<1.0", "httpx>=0.27,<1.0"]
+experiment = ["pandas==2.2.3", "matplotlib==3.10.1", "seaborn==0.13.2"]
+dev = ["pytest==8.3.5", "ruff==0.11.2", "pandas==2.2.3",
+       "matplotlib==3.10.1", "seaborn==0.13.2", "fastapi==0.115.12", "httpx==0.28.1"]
+transformer = ["transformers==4.51.3", "torch==2.6.0", "accelerate==1.6.0", "pandas==2.2.3",
+               "matplotlib==3.10.1", "seaborn==0.13.2"]
+api = ["fastapi==0.115.12", "uvicorn[standard]==0.34.0", "httpx==0.28.1"]
 
 [project.scripts]
 english-sentiment = "english_sentiment.cli:main"

@@ -8,7 +8,8 @@ from urllib.request import urlopen
 
 import pandas as pd
 
-BASE_URL = "https://raw.githubusercontent.com/cardiffnlp/tweeteval/main/datasets/sentiment"
+DATASET_REVISION = "4fbd22cd78421f05b1ecdb4fc5725bc7a7bd8f66"
+BASE_URL = f"https://raw.githubusercontent.com/cardiffnlp/tweeteval/{DATASET_REVISION}/datasets/sentiment"
 SPLITS = ("train", "validation", "test")
 FILE_STEMS = {"train": "train", "validation": "val", "test": "test"}
 LABEL_MAP = {0: "negative", 1: "neutral", 2: "positive"}
@@ -54,4 +55,7 @@ def prepare_tweeteval(output_path: Path) -> pd.DataFrame:
         raise ValueError("Data leakage detected: a text occurs in multiple official splits")
     output_path.parent.mkdir(parents=True, exist_ok=True)
     frame.to_csv(output_path, index=False, encoding="utf-8")
+    from .experiment import digest, save_json
+    save_json(output_path.with_suffix(".manifest.json"), {"revision": DATASET_REVISION,
+              "sha256": digest(output_path), "rows": len(frame)})
     return frame

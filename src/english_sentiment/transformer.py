@@ -1,96 +1,102 @@
-"""Evaluate a production-ready English RoBERTa sentiment model."""
+"""Fine-tune RoBERTa and select checkpoints using validation only."""
 
 from __future__ import annotations
 
-import json
-from pathlib import Path
 
 import numpy as np
-import pandas as pd
-from sklearn.metrics import classification_report, precision_recall_fscore_support
+from sklearn.metrics import precision_recall_fscore_support
 
-from .constants import ID_TO_LABEL, LABELS
+from .constants import ID_TO_LABEL
 from .training import load_dataset
 
-DEFAULT_MODEL = "cardiffnlp/twitter-roberta-base-sentiment-latest"
+DEFAULT_MODEL = "FacebookAI/roberta-base"
 
 
 def compute_transformer_metrics(prediction: tuple[np.ndarray, np.ndarray]) -> dict[str, float]:
     logits, labels = prediction
     predicted = np.argmax(logits, axis=-1)
     precision, recall, f1, _ = precision_recall_fscore_support(
-        labels, predicted, average="macro", zero_division=0)
+        labels, predicted, labels=list(ID_TO_LABEL), average="macro", zero_division=0)
     weighted = precision_recall_fscore_support(
-        labels, predicted, average="weighted", zero_division=0)[2]
+        labels, predicted, labels=list(ID_TO_LABEL), average="weighted", zero_division=0)[2]
     return {"precision_macro": float(precision), "recall_macro": float(recall),
             "f1_macro": float(f1), "f1_weighted": float(weighted)}
 
 
-def write_model_comparison(report_dir: Path) -> pd.DataFrame:
-    classical_path, transformer_path = (
-        report_dir / "classical_summary.json", report_dir / "transformer_summary.json")
-    if not classical_path.exists() or not transformer_path.exists():
-        return pd.DataFrame()
-    classical = json.loads(classical_path.read_text(encoding="utf-8"))
-    transformer = json.loads(transformer_path.read_text(encoding="utf-8"))
-    rows = [{"model": name, **metrics} for name, metrics in classical["models"].items()]
-    rows.append({"model": "twitter_roberta", **transformer["metrics"]})
-    comparison = pd.DataFrame(rows).sort_values("f1_macro", ascending=False)
-    comparison.to_csv(report_dir / "model_comparison.csv", index=False)
-    import matplotlib.pyplot as plt
-    import seaborn as sns
-    chart = comparison.melt(id_vars="model", value_vars=["precision_macro", "recall_macro",
-        "f1_macro"], var_name="metric", value_name="score")
-    plt.figure(figsize=(10, 5))
-    sns.barplot(data=chart, x="model", y="score", hue="metric")
-    plt.ylim(0, 1)
-    plt.title("English Sentiment Model Comparison")
-    plt.xlabel("Model")
-    plt.ylabel("Score")
-    plt.tight_layout()
-    plt.savefig(report_dir / "model_comparison.png", dpi=180)
-    plt.close()
-    return comparison
+DEFAULT_REVISION = "e2da8e2f811d1448a5b465c236feacd80ffbac7b"
 
 
-def evaluate_transformer(data_path: Path, output_dir: Path, report_dir: Path,
-                         model_name: str = DEFAULT_MODEL, batch_size: int = 32,
-                         max_length: int = 128) -> dict[str, float]:
-    """Evaluate an English sentiment transformer on the official TweetEval test split."""
-    try:
-        import torch
-        from transformers import AutoModelForSequenceClassification, AutoTokenizer
-    except ImportError as error:
-        raise RuntimeError('Install dependencies with: pip install -e ".[transformer]"') from error
-    frame = load_dataset(data_path)
-    test = frame[frame["split"] == "test"]
-    tokenizer = AutoTokenizer.from_pretrained(model_name)
-    model = AutoModelForSequenceClassification.from_pretrained(model_name)
+def predict_local(path, texts, batch_size=32):
+    import torch
+    from transformers import AutoModelForSequenceClassification, AutoTokenizer
+    tokenizer = AutoTokenizer.from_pretrained(path, local_files_only=True)
+    model = AutoModelForSequenceClassification.from_pretrained(path, local_files_only=True)
     model.eval()
-    device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
-    model.to(device)
-    all_logits = []
-    for start in range(0, len(test), batch_size):
-        encoded = tokenizer(test["text"].iloc[start:start + batch_size].tolist(), padding=True,
-                            truncation=True, max_length=max_length, return_tensors="pt")
+    result = []
+    for start in range(0, len(texts), batch_size):
+        batch = tokenizer(texts[start:start + batch_size], padding=True, truncation=True,
+                          max_length=128, return_tensors="pt")
         with torch.inference_mode():
-            logits = model(**{key: value.to(device) for key, value in encoded.items()}).logits
-        all_logits.append(logits.cpu().numpy())
-    logits = np.concatenate(all_logits)
-    labels = test["label"].map({label: idx for idx, label in ID_TO_LABEL.items()}).to_numpy()
-    metrics = compute_transformer_metrics((logits, labels))
-    predicted = np.argmax(logits, axis=-1)
-    report = classification_report(labels, predicted, labels=list(ID_TO_LABEL),
-        target_names=LABELS, output_dict=True, zero_division=0)
+            ids = model(**batch).logits.argmax(-1).tolist()
+        result.extend(model.config.id2label[i] for i in ids)
+    return result
+
+
+def finetune_transformer(data_path, output_dir, report_dir, epochs=3, batch_size=16):
+    """Train a base RoBERTa; select checkpoint only by validation macro F1."""
+    import torch
+    from transformers import (AutoModelForSequenceClassification, AutoTokenizer,
+                              DataCollatorWithPadding, Trainer, TrainingArguments, set_seed)
+    from .constants import LABEL_TO_ID
+    from .experiment import analyze, register, save_json
+    if epochs < 1 or batch_size < 1:
+        raise ValueError("epochs and batch_size must be positive")
+    if (report_dir / "selection.json").exists():
+        raise ValueError("Selection is frozen")
+    set_seed(42)
+    frame = load_dataset(data_path)
+    train = frame[frame.split == "train"].drop_duplicates(subset=["text", "label"])
+    validation = frame[frame.split == "validation"]
+    tokenizer = AutoTokenizer.from_pretrained(DEFAULT_MODEL, revision=DEFAULT_REVISION)
+    model = AutoModelForSequenceClassification.from_pretrained(
+        DEFAULT_MODEL, revision=DEFAULT_REVISION, num_labels=3,
+        id2label=ID_TO_LABEL, label2id=LABEL_TO_ID)
+
+    class EncodedDataset(torch.utils.data.Dataset):
+        def __init__(self, rows):
+            self.tokens = tokenizer(rows.text.tolist(), truncation=True, max_length=128)
+            self.labels = rows.label.map(LABEL_TO_ID).tolist()
+
+        def __len__(self):
+            return len(self.labels)
+
+        def __getitem__(self, index):
+            return {**{key: value[index] for key, value in self.tokens.items()},
+                    "labels": self.labels[index]}
+
     output_dir.mkdir(parents=True, exist_ok=True)
-    report_dir.mkdir(parents=True, exist_ok=True)
-    model.save_pretrained(output_dir / "transformer_model")
-    tokenizer.save_pretrained(output_dir / "transformer_model")
-    summary = {"model": model_name, "evaluation_dataset": "TweetEval sentiment test",
-               "test_rows": len(test), "batch_size": batch_size, "max_length": max_length,
-               "device": str(device), "metrics": metrics}
-    (report_dir / "transformer_summary.json").write_text(json.dumps(summary, indent=2), encoding="utf-8")
-    (report_dir / "transformer_classification_report.json").write_text(
-        json.dumps(report, indent=2), encoding="utf-8")
-    write_model_comparison(report_dir)
+    args = TrainingArguments(
+        output_dir=str(output_dir / "checkpoints"), num_train_epochs=epochs,
+        per_device_train_batch_size=batch_size, per_device_eval_batch_size=batch_size,
+        learning_rate=2e-5, weight_decay=0.01, eval_strategy="epoch", save_strategy="epoch",
+        load_best_model_at_end=True, metric_for_best_model="f1_macro",
+        greater_is_better=True, save_total_limit=2, seed=42, data_seed=42,
+        report_to="none", dataloader_num_workers=0, use_cpu=not torch.cuda.is_available())
+    trainer = Trainer(model=model, args=args, train_dataset=EncodedDataset(train),
+                      eval_dataset=EncodedDataset(validation),
+                      data_collator=DataCollatorWithPadding(tokenizer),
+                      compute_metrics=compute_transformer_metrics)
+    trainer.train()
+    prediction = trainer.predict(EncodedDataset(validation))
+    predicted = [ID_TO_LABEL[int(i)] for i in prediction.predictions.argmax(-1)]
+    metrics = analyze(validation, predicted, report_dir, "validation_roberta")
+    artifact = output_dir / "transformer_model"
+    trainer.save_model(str(artifact))
+    tokenizer.save_pretrained(artifact)
+    register(report_dir, "roberta", artifact, "transformer", metrics, data_path)
+    save_json(report_dir / "transformer_summary.json", {
+        "model": DEFAULT_MODEL, "revision": DEFAULT_REVISION, "seed": 42,
+        "evaluation_split": "validation", "metrics": metrics,
+        "best_checkpoint": trainer.state.best_model_checkpoint, "epochs": epochs,
+        "batch_size": batch_size, "max_length": 128, "learning_rate": 2e-5})
     return metrics

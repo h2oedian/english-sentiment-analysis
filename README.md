@@ -1,156 +1,104 @@
-# English NLP & Sentiment Analysis System
+# English sentiment analysis
 
-[![CI](https://github.com/h2oedian/english-sentiment-analysis/actions/workflows/ci.yml/badge.svg)](https://github.com/h2oedian/english-sentiment-analysis/actions/workflows/ci.yml)
-[![Python 3.10+](https://img.shields.io/badge/python-3.10%2B-3776AB.svg)](https://www.python.org/)
-[![License: MIT](https://img.shields.io/badge/license-MIT-green.svg)](LICENSE)
+A validation-first TweetEval experiment and FastAPI service. Python 3.11/3.12.
 
-An end-to-end, reproducible English sentiment-analysis portfolio project. It classifies text as
-**negative**, **neutral**, or **positive**, compares classical machine learning with a RoBERTa
-transformer, and exposes the selected model through a tested API and browser interface.
+## Reproducible installation
 
-## Highlights
-
-- Official TweetEval train/validation/test splits with leakage checks
-- Negation-aware English normalization (`don't` → `do not`)
-- Word and character TF-IDF features
-- Logistic Regression, calibrated Linear SVM, and Multinomial Naive Bayes
-- Twitter-RoBERTa transformer benchmark
-- Macro precision, recall, F1, weighted F1, per-class reports, and confusion matrices
-- FastAPI endpoints, responsive English UI, Docker image, and GitHub Actions CI
-- Saved, probability-calibrated deployment model
-
-## Architecture
-
-```text
-TweetEval → validation/normalization → TF-IDF baselines ─┐
-                                                        ├→ metrics + comparison report
-TweetEval test → Twitter-RoBERTa evaluation ─────────────┘
-                                                        ↓
-                                      saved model → FastAPI → English web UI
-```
-
-## Quick start
-
-```powershell
+```sh
 python -m venv .venv
-.venv\Scripts\Activate.ps1
-python -m pip install -e ".[dev]"
+# Activate .venv for your shell first.
+python -m pip install --require-hashes -r requirements-dev.lock -r requirements-build.lock
+python -m pip install --no-deps --no-build-isolation -e .
+pytest -q
+```
+
+Direct dependencies are pinned in pyproject.toml. Universal lockfiles pin transitive
+versions and distribution hashes. Dataset downloads use commit
+`4fbd22cd78421f05b1ecdb4fc5725bc7a7bd8f66`; the prepared CSV gets a SHA-256 manifest.
+RoBERTa uses `FacebookAI/roberta-base` at revision
+`e2da8e2f811d1448a5b465c236feacd80ffbac7b`. Seeds are 42.
+Exact floating-point reproducibility across hardware is not guaranteed.
+
+## Experiment lifecycle
+
+```sh
 english-sentiment prepare-data
 english-sentiment train
-pytest
-uvicorn english_sentiment.api:app --reload
+english-sentiment finetune-transformer --epochs 3 --batch-size 16
+english-sentiment select
+english-sentiment evaluate-test
 ```
 
-Open `http://127.0.0.1:8000` for the demo or `http://127.0.0.1:8000/docs` for OpenAPI docs.
+All candidates share `--reports reports/run` and the same dataset. Use distinct
+artifact/report directories for independent development experiments. Run all desired
+candidates before `select`; it freezes the winner by **validation macro F1**, with
+deterministic name ordering for ties. `train` fits TF-IDF and classifiers on train only:
+Logistic Regression, calibrated Linear SVM, Multinomial NB, and a majority/prior baseline.
+SVM calibration uses only training folds. There is no train+validation refit.
 
-## Dataset
+`finetune-transformer` trains the base RoBERTa classification head and backbone on train,
+checks validation every epoch, and restores the best validation macro-F1 checkpoint.
+It uses learning rate 2e-5, weight decay 0.01, maximum length 128, and dynamic padding.
+This is a real fine-tuning implementation; no full benchmark scores from this new
+protocol are claimed. Full RoBERTa training requires suitable compute and model downloads.
+The same English normalization is used during training and serving.
 
-The default benchmark is the sentiment subset of
-[TweetEval](https://github.com/cardiffnlp/tweeteval), containing English tweets with three labels.
-The project downloads the original files at runtime and does not redistribute the dataset.
-Official splits are retained; classical models combine train and validation for final fitting and
-are evaluated once on the test split.
+Official split membership is required. Loading rejects empty text, invalid labels,
+missing classes, source-ID overlap, and normalized/case-insensitive text overlap across
+splits. Conflicting annotations within a split are retained as dataset ambiguity. Training
+alone removes exact duplicate text/label pairs; validation and test retain their rows.
+Custom data that violates these checks must be corrected before training.
 
-The generated CSV schema is:
+`evaluate-test` evaluates **only the frozen winner**. It checks dataset and artifact
+hashes, then exclusively creates `test_consumed.json` before inference. Another test
+attempt, including after an interrupted evaluation, fails closed. The gate is scoped
+to the experiment directory, not a tamper-proof global access control. Do not delete
+it or create new runs to tune against the same test set. The original project already
+used this test set for selection, so an unbiased new scientific claim needs a fresh
+unseen holdout; a software fix cannot undo earlier exposure.
 
-```csv
-text,label,source_id,split
-I love this!,positive,0a1b2c3d4e5f6789,train
+## Error analysis
+
+Each validation candidate produces classification metrics, a labeled confusion matrix,
+false-positive/false-negative examples in `validation_*_errors.csv`, and accuracy slices
+with/without negation in `validation_*_analysis.json`. Inspect these for development.
+The final winner produces equivalent `test_*` reports only after selection. Test error
+analysis is descriptive; do not use it for another tuning cycle on the same test set.
+
+## API and Docker
+
+The default API reads `reports/run/selection.json` and serves its chosen artifact/backend.
+To override it explicitly:
+
+```sh
+# Set SENTIMENT_BACKEND=classical and SENTIMENT_MODEL_PATH to the selected .joblib file.
+uvicorn english_sentiment.api:app --host 127.0.0.1 --port 8000
 ```
 
-## Experiments
+For a transformer, set backend `transformer` and path to the saved transformer directory.
+Transformer loading is offline and validates the label mapping. Load only trusted
+joblib artifacts. `/live` is liveness; `/health` is readiness (503 when no model is
+available). `/predict` accepts 1-1000 characters; `/predict/batch` accepts 1-100 texts.
+Blank inputs are rejected. Model-load failures return 503 rather than leaking paths.
 
-Run the reproducible classical comparison:
-
-```powershell
-python -m pip install -e ".[experiment]"
-english-sentiment prepare-data
-english-sentiment train
-```
-
-Evaluate the CC-BY-4.0 licensed
-[`cardiffnlp/twitter-roberta-base-sentiment-latest`](https://huggingface.co/cardiffnlp/twitter-roberta-base-sentiment-latest)
-on the same held-out test data:
-
-```powershell
-python -m pip install -e ".[transformer]"
-english-sentiment evaluate-transformer
-```
-
-Generated files include JSON classification reports, confusion matrices, a CSV comparison table,
-a comparison chart, and the selected classical model. Macro F1 is the primary metric because it
-gives equal importance to all three classes despite class imbalance.
-
-### Reproduced results
-
-Results below were generated on all 12,284 examples in the official TweetEval test split:
-
-| Model | Macro Precision | Macro Recall | Macro F1 | Weighted F1 |
-|---|---:|---:|---:|---:|
-| Twitter-RoBERTa | **0.718** | **0.731** | **0.722** | **0.719** |
-| Logistic Regression | 0.601 | 0.619 | 0.608 | 0.611 |
-| Multinomial Naive Bayes | 0.610 | 0.591 | 0.591 | 0.602 |
-| Calibrated Linear SVM | 0.611 | 0.586 | 0.581 | 0.595 |
-
-Twitter-RoBERTa improves macro F1 by 11.3 percentage points over the strongest classical baseline.
-Exact machine-readable values are committed under `reports/`.
-
-## API
-
-```powershell
-python -m pip install -e ".[api]"
-uvicorn english_sentiment.api:app --reload
-```
-
-Endpoints:
-
-- `GET /health` — service and backend status
-- `POST /predict` — one text (maximum 1,000 characters)
-- `POST /predict/batch` — up to 100 texts
-- `GET /docs` — interactive API documentation
-
-Example request:
-
-```powershell
-Invoke-RestMethod http://127.0.0.1:8000/predict -Method Post `
-  -ContentType application/json -Body '{"text":"I do not like this product."}'
-```
-
-The compact classical model is the default. To serve a downloaded transformer artifact:
-
-```powershell
-$env:SENTIMENT_BACKEND = "transformer"
-$env:SENTIMENT_MODEL_PATH = "artifacts/transformer_model"
-uvicorn english_sentiment.api:app
-```
-
-## Docker
-
-```powershell
+```sh
 docker build -t english-sentiment-api .
-docker run --rm -p 8000:8000 english-sentiment-api
+docker run --rm -p 8000:8000 --mount type=bind,source=/absolute/selected-model.joblib,target=/models/model.joblib,readonly english-sentiment-api
 ```
 
-## Repository structure
+The CPU classical image uses a fixed Python image tag, hash-locked dependencies,
+non-root UID 10001, a readiness healthcheck, and bounded request concurrency. Model
+artifacts are mounted read-only, not baked into the image. The image tag is versioned,
+but not pinned to a registry digest. Transformer serving requires the transformer
+extra/environment; it is not included in the compact Docker image.
 
-```text
-src/english_sentiment/  reusable package, API, and web UI
-tests/                  unit and integration tests
-data/raw/               downloaded data (Git-ignored)
-models/                 compact deployment model
-artifacts/              transformer files (Git-ignored)
-reports/                metrics, plots, and experiment summaries
-```
+## Historical results
 
-## Reproducibility and limitations
+Files in `reports/legacy/` and `models/best_classical_model.joblib` are historical outputs
+from the old test-selected protocol. They are not current benchmark evidence, are not
+loaded by the new default API, and are excluded from Docker. Retrain with the new pipeline.
 
-- Dataset splits are official and model configuration is committed.
-- Raw data and large transformer weights are intentionally excluded from Git.
-- Social-media sentiment is subjective; sarcasm, mixed opinions, and domain shifts remain hard.
-- Predictions should not be used for high-stakes or individual-level decisions.
+## License
 
-## License and citation
-
-Project code is MIT licensed. TweetEval and pretrained-model terms apply separately. If you use the
-benchmark, cite Barbieri et al., *TweetEval: Unified Benchmark and Comparative Evaluation for Tweet
-Classification* (Findings of EMNLP 2020). The RoBERTa model card specifies CC-BY-4.0.
+Code: MIT. Dataset and pretrained-model licenses apply separately. Cite Barbieri et al.,
+*TweetEval: Unified Benchmark and Comparative Evaluation for Tweet Classification* (2020).
